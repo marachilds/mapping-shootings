@@ -1,0 +1,155 @@
+---
+author: "Mara Childs"
+content: "Assignment 6"
+date: "5/6/2017"
+output: html_document
+---
+
+<!-- In this assignment, I use "include = FALSE" where I don't want to show any outputs of my r code -->
+```{r libraries, include = FALSE}
+library(httr)
+library(dplyr)
+library(knitr)
+library(plotly)
+```
+
+<center> <h1> Shootings in 2016 </h1> </center>
+
+<!-- Reading in data -->
+```{r read in, include = FALSE}
+shootings <- read.csv("data/shootings-2016.csv", stringsAsFactors = FALSE)
+```
+
+<!-- Summary Information computations -->
+```{r summary info, include = FALSE}
+total.shootings <- nrow(shootings)
+total.deaths <- sum(shootings$killed)
+affected.cities <- shootings %>% 
+                   mutate(afflictions = injured + killed) %>% 
+                   arrange(-afflictions) %>% 
+                   select(city)
+affected.all <- paste0(affected.cities[1,],", ",
+                       affected.cities[2,],", ",
+                       affected.cities[3,],", ",
+                       affected.cities[4,]," and ",
+                       affected.cities[5,])
+total.injuries <- sum(shootings$injured)
+most.deaths <- shootings %>% 
+               group_by(state) %>% 
+               summarise(total.deaths = sum(killed)) %>% 
+               arrange(-total.deaths)
+most.deaths.state <- most.deaths[1,1]
+most.deaths.num <- most.deaths[1,2]
+```
+<!-- Summary Information output -->
+### Summary of Shootings in 2016
+In 2016, the United States had `r total.shootings` shootings. As a result, `r total.deaths` lives were lost, and `r total.injuries` people were injured. As calculated by the total number of injuries and deaths combined, the cities that were most affected were `r affected.all`. Additionally, the state with the most deaths was `r most.deaths.state`, losing `r most.deaths.num` people in 2016.
+
+<!-- Summary Table computations -->
+
+### Incidents by Weekday
+
+```{r summary table, include = FALSE}
+weekday.incidents <- shootings %>% 
+                     mutate(day = weekdays(as.Date(shootings$date, format="%B %d, %Y"))) %>% 
+                     group_by(day) %>%
+                     summarise(total.incidents = sum(injured + killed)) %>% 
+                     arrange(day)
+weekday.incidents$day <- factor(weekday.incidents$day, levels= c("Sunday", "Monday", 
+                                "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+day.order <- weekday.incidents[order(weekday.incidents$day), ]
+high.day <- day.order[day.order$total.incidents == max(day.order$total.incidents),]
+total.weekend <- day.order[1,2] + day.order[7,2]
+total.weekday <- sum(day.order$total.incidents[2:6])
+```
+<!-- Summary Table output -->
+```{r table output, echo = FALSE}
+cols <- c("Day of the Week","Total Incidents")
+
+kable(day.order, row.names = NA, col.names = cols, caption = "Total Injuries and Deaths by Weekday")
+```
+
+As is visible in this summary table, the day of the week with the highest total number of incidents in 2016, both injuries and deaths combined, was `r high.day[1,1]`. The weekend days alone saw a total of `r total.weekend` injuries and deaths, whereas the weekdays combined had only `r total.weekday` incidents. Interestingly enough, the middle of the week, Tuesday, Wednesday, and Thursday, had the fewest incidents, checking in with only `r day.order[3,2]`, `r day.order[4,2]`, and `r day.order[5,2]` injuries and deaths total, respectively.
+
+<!-- In-depth Incident computations -->
+```{r incident, include = FALSE}
+muk <- shootings[shootings$city == "Mukilteo",]
+muk.date <- muk$date
+muk.city <- muk$city
+muk.injured <- muk$injured
+muk.killed <- muk$killed
+muk.total <- muk.injured + muk.killed
+```
+
+<!-- In-depth Incident output -->
+### In-depth: Mukilteo Shooting
+
+On `r muk.date`, Allen Ivanov went into a house party and shot `r muk.total` people. A friend of his claimed that it was because Ivanov was angry at his ex-girlfriend, one of the victims of the shooting, for moving on. Ivanov had apparently texted that friend a picture of an assault rifle that he had purchased a few days in advance. That night in `r muk.city`, `r muk.killed` people were slain and `r muk.injured` was injured. More information about this incident can be found [here](http://komonews.com/news/local/watch-at-1-pm-accused-mukilteo-shooter-to-appear-in-court).
+
+<!-- Interactive Map -->
+
+### Interactive Map
+Observe the following map that details each shooting that took place in the United States in 2016. The size of the dot corresponds to the number of people killed, and the color moves along a gradient that signifies the number of people injured (absolute blue is zero). Note that this shows us that there were no shootings in the general midwest region of the United States, and there were many more occurring on the east side of the country.
+
+```{r interactive map, echo = FALSE}
+# Map specifications from the plotly examples, scope changed to usa
+g <- list(
+  scope = 'usa',
+  showland = TRUE,
+  landcolor = toRGB("grey83"),
+  subunitcolor = toRGB("white"),
+  countrycolor = toRGB("white"),
+  showlakes = TRUE,
+  lakecolor = toRGB("white"),
+  showsubunits = TRUE,
+  showcountries = TRUE,
+  resolution = 50,
+  projection = list(
+    type = 'conic conformal',
+    rotation = list(lon = -100)
+  ),
+  lonaxis = list(
+    showgrid = TRUE,
+    gridwidth = 0.5,
+    range = c(-140, -55),
+    dtick = 5
+  ),
+  lataxis = list(
+    showgrid = TRUE,
+    gridwidth = 0.5,
+    range = c(20, 60),
+    dtick = 5
+  )
+)
+
+# Specifying how to plot it
+p <- plot_geo(shootings, lat = ~lat, lon = ~lng, color = ~injured, size = ~killed, colors=c("blue","yellow"), opacity = 0.5) %>%
+  add_markers(
+    text = ~paste(paste0(city,", ",state), date, paste(killed, "killed"), paste(injured, "injured"), sep = "<br />")
+  ) %>%
+  layout(title = 'United States Shootings in 2016', geo = g)
+
+plotly_build(p)
+```
+
+<!-- Interactive Plot -->
+### Patterns in Deaths and Injuries
+Below is a plotting of the avergae number of deaths and injuries by weekday from each shooting in 2016. 
+```{r interactive plot, echo = FALSE}
+shootings.2 <- shootings %>% 
+               mutate(day = weekdays(as.Date(shootings$date, format="%B %d, %Y"))) %>% 
+               group_by(day) %>%
+               summarise(avg.killed = mean(killed), avg.injured = mean(injured))
+shootings.2$day <- factor(shootings.2$day, levels= c("Sunday", "Monday", 
+                                                     "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+ordered <- shootings.2[order(shootings.2$day), ]
+
+p <- plot_ly(ordered, x = ~day, y = ~avg.injured, type = 'bar', name = 'Injured', marker = list(color = toRGB("purple"))) %>%
+  add_trace(y = ~avg.killed, name = 'Killed', marker = list(color = toRGB("pink"))) %>%
+  layout(yaxis = list(title = 'incidents (deaths and injuries)'), barmode = 'stack')
+plotly_build(p)
+
+most.day <- ordered[ordered$avg.injured == max(ordered$avg.injured), 1]
+most.day.killed <- ordered[ordered$avg.killed == max(ordered$avg.killed), 1]
+```
+While these are grisly numbers and darker truths, we are able to see that the number of injuries far outnumbers the number of deaths sustained. The highest average number of injuries were on `r most.day`, while the highest average number of deaths occured on `r most.day.killed`. Shootings are difficult to discuss and these statistics are even harder to view when each unit is a life that was hurt or ended. In this plot, we are reminded that while many lives are lost, the average number of lives injured is greater for every day of the week. As we learned above that the greatest number of shootings occured on a `r high.day[1,1]`, even then there were fewer killed than were injured.
